@@ -1,23 +1,21 @@
-import { contextBridge, ipcRenderer } from "electron";
-contextBridge.exposeInMainWorld("electronAPI", {
+import { contextBridge as d, ipcRenderer as e } from "electron";
+d.exposeInMainWorld("electronAPI", {
   // Window controls
-  minimizeWindow: () => ipcRenderer.send("window-minimize"),
-  maximizeWindow: () => ipcRenderer.send("window-maximize"),
-  closeWindow: () => ipcRenderer.send("window-close"),
-  isMaximized: () => ipcRenderer.invoke("window-is-maximized"),
+  minimizeWindow: () => e.send("window-minimize"),
+  maximizeWindow: () => e.send("window-maximize"),
+  closeWindow: () => e.send("window-close"),
+  isMaximized: () => e.invoke("window-is-maximized"),
   // Platform info
   platform: process.platform,
   // IPC communication
-  on: (channel, callback) => {
-    ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+  on: (i, n) => {
+    e.on(i, (m, ...o) => n(...o));
   },
-  removeListener: (channel, callback) => {
-    ipcRenderer.removeListener(channel, callback);
+  removeListener: (i, n) => {
+    e.removeListener(i, n);
   },
-  send: (channel, ...args) => {
-    ipcRenderer.send(channel, ...args);
+  send: (i, ...n) => {
+    e.send(i, ...n);
   },
-  invoke: (channel, ...args) => {
-    return ipcRenderer.invoke(channel, ...args);
-  }
+  invoke: (i, ...n) => e.invoke(i, ...n)
 });

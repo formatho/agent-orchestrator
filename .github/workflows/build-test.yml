@@ -1,0 +1,75 @@
+name: Build Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Test Build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron-app/package-lock.json
+
+      - name: Test Backend Build
+        working-directory: backend
+        run: |
+          go mod tidy
+          go build -o bin/server ./cmd/server
+
+      - name: Test Backend
+        working-directory: backend
+        run: go test ./... -v
+
+      - name: Install Frontend Dependencies
+        working-directory: electron-app
+        run: npm ci
+
+      - name: Test Frontend Build
+        working-directory: electron-app
+        run: npm run build
+
+      - name: Test Electron Build (macOS)
+        if: matrix.os == 'macos-latest'
+        working-directory: electron-app
+        run: npm run build:mac -- --dir
+
+      - name: Test Electron Build (Windows)
+        if: matrix.os == 'windows-latest'
+        working-directory: electron-app
+        run: npm run build:win -- --dir
+
+      - name: Test Electron Build (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: electron-app
+        run: npm run build:linux -- --dir
+
+      - name: Upload Test Artifacts
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: build-${{ matrix.os }}
+          path: |
+            electron-app/dist/
+            electron-app/dist-electron/
+            backend/bin/
+          retention-days: 7

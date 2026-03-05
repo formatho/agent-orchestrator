@@ -1,135 +1,91 @@
-import { nativeImage, Tray, Menu, app, BrowserWindow, ipcMain } from "electron";
-import path from "path";
-import { fileURLToPath } from "url";
-const __dirname$2 = path.dirname(fileURLToPath(import.meta.url));
-let tray = null;
-function setupTray(win2) {
-  const iconPath = path.join(__dirname$2, "../public/icon.png");
-  const icon = nativeImage.createFromPath(iconPath);
-  const trayIcon = icon.resize({ width: 16, height: 16 });
-  tray = new Tray(trayIcon);
-  const contextMenu = Menu.buildFromTemplate([
+import { nativeImage as h, Tray as f, Menu as u, app as i, BrowserWindow as r, ipcMain as s } from "electron";
+import n from "path";
+import { fileURLToPath as l } from "url";
+const g = n.dirname(l(import.meta.url));
+let t = null;
+function b(e) {
+  const d = n.join(g, "../public/icon.png"), m = h.createFromPath(d).resize({ width: 16, height: 16 });
+  t = new f(m);
+  const p = u.buildFromTemplate([
     {
       label: "Open Agent Orchestrator",
       click: () => {
-        if (win2) {
-          win2.show();
-          win2.focus();
-        }
+        e && (e.show(), e.focus());
       }
     },
     {
       label: "Dashboard",
       click: () => {
-        if (win2) {
-          win2.show();
-          win2.webContents.send("navigate", "/");
-        }
+        e && (e.show(), e.webContents.send("navigate", "/"));
       }
     },
     { type: "separator" },
     {
       label: "Agents",
       click: () => {
-        if (win2) {
-          win2.show();
-          win2.webContents.send("navigate", "/agents");
-        }
+        e && (e.show(), e.webContents.send("navigate", "/agents"));
       }
     },
     {
       label: "TODOs",
       click: () => {
-        if (win2) {
-          win2.show();
-          win2.webContents.send("navigate", "/todos");
-        }
+        e && (e.show(), e.webContents.send("navigate", "/todos"));
       }
     },
     { type: "separator" },
     {
       label: "Quit",
       click: () => {
-        app.quit();
+        i.quit();
       }
     }
   ]);
-  tray.setToolTip("Agent Orchestrator");
-  tray.setContextMenu(contextMenu);
-  tray.on("click", () => {
-    if (win2) {
-      if (win2.isVisible()) {
-        win2.hide();
-      } else {
-        win2.show();
-        win2.focus();
-      }
-    }
-  });
-  return tray;
+  return t.setToolTip("Agent Orchestrator"), t.setContextMenu(p), t.on("click", () => {
+    e && (e.isVisible() ? e.hide() : (e.show(), e.focus()));
+  }), t;
 }
-const __dirname$1 = path.dirname(fileURLToPath(import.meta.url));
-process.env.DIST_ELECTRON = path.join(__dirname$1, "../");
-process.env.DIST = path.join(__dirname$1, "../dist");
-process.env.VITE_PUBLIC = process.env.VITE_PUBLIC || path.join(__dirname$1, "../public");
-let win = null;
-const preload = path.join(__dirname$1, "./preload.js");
-function createWindow() {
-  win = new BrowserWindow({
+const a = n.dirname(l(import.meta.url));
+process.env.DIST_ELECTRON = n.join(a, "../");
+process.env.DIST = n.join(a, "../dist");
+process.env.VITE_PUBLIC = process.env.VITE_PUBLIC || n.join(a, "../public");
+let o = null;
+const w = n.join(a, "./preload.js");
+function c() {
+  return o = new r({
     width: 1400,
     height: 900,
     minWidth: 1e3,
     minHeight: 700,
     title: "Agent Orchestrator",
-    icon: path.join(process.env.VITE_PUBLIC || "", "icon.png"),
+    icon: n.join(process.env.VITE_PUBLIC || "", "icon.png"),
     backgroundColor: "#0f0f0f",
-    frame: false,
+    frame: !1,
     titleBarStyle: "hiddenInset",
     webPreferences: {
-      preload,
-      nodeIntegration: false,
-      contextIsolation: true
+      preload: w,
+      nodeIntegration: !1,
+      contextIsolation: !0
     }
-  });
-  win.webContents.on("did-finish-load", () => {
-    win?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
-  });
-  if (process.env.VITE_DEV_SERVER_URL) {
-    win.loadURL(process.env.VITE_DEV_SERVER_URL);
-    win.webContents.openDevTools();
-  } else {
-    win.loadFile(path.join(process.env.DIST || "", "index.html"));
-  }
-  return win;
+  }), o.webContents.on("did-finish-load", () => {
+    o?.webContents.send("main-process-message", (/* @__PURE__ */ new Date()).toLocaleString());
+  }), process.env.VITE_DEV_SERVER_URL ? (o.loadURL(process.env.VITE_DEV_SERVER_URL), o.webContents.openDevTools()) : o.loadFile(n.join(process.env.DIST || "", "index.html")), o;
 }
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") {
-    app.quit();
-    win = null;
-  }
+i.on("window-all-closed", () => {
+  process.platform !== "darwin" && (i.quit(), o = null);
 });
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+i.on("activate", () => {
+  r.getAllWindows().length === 0 && c();
 });
-ipcMain.on("window-minimize", () => {
-  win?.minimize();
+s.on("window-minimize", () => {
+  o?.minimize();
 });
-ipcMain.on("window-maximize", () => {
-  if (win?.isMaximized()) {
-    win.unmaximize();
-  } else {
-    win?.maximize();
-  }
+s.on("window-maximize", () => {
+  o?.isMaximized() ? o.unmaximize() : o?.maximize();
 });
-ipcMain.on("window-close", () => {
-  win?.close();
+s.on("window-close", () => {
+  o?.close();
 });
-ipcMain.handle("window-is-maximized", () => {
-  return win?.isMaximized() || false;
-});
-app.whenReady().then(() => {
-  createWindow();
-  setupTray(win);
+s.handle("window-is-maximized", () => o?.isMaximized() || !1);
+i.whenReady().then(() => {
+  c(), b(o);
 });

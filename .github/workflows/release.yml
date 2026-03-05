@@ -1,0 +1,206 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., 0.1.0)'
+        required: false
+
+jobs:
+  build-backend:
+    name: Build Backend (Go)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: amd64
+            output: server-darwin-amd64
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+            output: server-darwin-arm64
+          - os: ubuntu-latest
+            platform: linux
+            arch: amd64
+            output: server-linux-amd64
+          - os: windows-latest
+            platform: windows
+            arch: amd64
+            output: server-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+
+      - name: Build Backend
+        working-directory: backend
+        run: |
+          GOOS=${{ matrix.platform }} GOARCH=${{ matrix.arch }} go build -ldflags="-s -w" -o bin/${{ matrix.output }} ./cmd/server
+
+      - name: Upload Backend Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-${{ matrix.platform }}-${{ matrix.arch }}
+          path: backend/bin/${{ matrix.output }}
+
+  build-electron:
+    name: Build Electron App
+    needs: build-backend
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+          - os: windows-latest
+            platform: win
+          - os: ubuntu-latest
+            platform: linux
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron-app/package-lock.json
+
+      - name: Download Backend Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: backend-*
+          path: backend/bin
+          merge-multiple: true
+
+      - name: Install Dependencies
+        working-directory: electron-app
+        run: npm ci
+
+      - name: Build Electron App (macOS)
+        if: matrix.platform == 'mac'
+        working-directory: electron-app
+        run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Electron App (Windows)
+        if: matrix.platform == 'win'
+        working-directory: electron-app
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Electron App (Linux)
+        if: matrix.platform == 'linux'
+        working-directory: electron-app
+        run: npm run build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Artifacts (macOS)
+        if: matrix.platform == 'mac'
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-mac
+          path: |
+            electron-app/release/*.dmg
+            electron-app/release/*.zip
+
+      - name: Upload Artifacts (Windows)
+        if: matrix.platform == 'win'
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-win
+          path: |
+            electron-app/release/*.exe
+            electron-app/release/*.nsis.zip
+
+      - name: Upload Artifacts (Linux)
+        if: matrix.platform == 'linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: electron-linux
+          path: |
+            electron-app/release/*.AppImage
+            electron-app/release/*.deb
+            electron-app/release/*.rpm
+
+  release:
+    name: Create Release
+    needs: [build-backend, build-electron]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Get Version from Tag
+        id: get_version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: Release ${{ steps.get_version.outputs.VERSION }}
+          body: |
+            ## Agent Orchestrator ${{ steps.get_version.outputs.VERSION }}
+
+            ### Downloads
+            - **macOS (Intel)**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}-mac-x64.dmg
+            - **macOS (Apple Silicon)**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}-mac-arm64.dmg
+            - **Windows**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}-setup.exe
+            - **Linux**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}.AppImage
+
+            ### What's New
+            See [CHANGELOG.md](./CHANGELOG.md) for details.
+
+            ### Installation
+            - **macOS**: Download .dmg, open, drag to Applications
+            - **Windows**: Download .exe installer, run
+            - **Linux**: Download .AppImage, chmod +x, run
+          files: |
+            artifacts/**/*.dmg
+            artifacts/**/*.zip
+            artifacts/**/*.exe
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+            artifacts/**/*.rpm
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Optional: Auto-update homebrew, snap, etc.
+  notify:
+    name: Notify Release
+    needs: release
+    runs-on: ubuntu-latest
+    if: success()
+
+    steps:
+      - name: Webhook Notification
+        run: |
+          curl -X POST ${{ secrets.RELEASE_WEBHOOK_URL }} \
+            -H "Content-Type: application/json" \
+            -d '{"text": "Agent Orchestrator ${{ steps.get_version.outputs.VERSION }} released! https://github.com/formatho/agent-orchestrator/releases/tag/${{ steps.get_version.outputs.VERSION }}"}' || true
