@@ -13,7 +13,7 @@
 - ✅ **Unified interface** — Same API for all providers
 - ✅ **Streaming support** — Real-time token streaming
 - ✅ **Token counting** — Accurate token counting per provider
-- ✅ **Retry logic** — Exponential backoff on failures
+- ✅ **Retry logic** — Exponential backoff on failures (429, 500, 502, 503, 504)
 - ✅ **Per-request override** — Change provider/model per request
 
 ---
@@ -114,6 +114,24 @@ type Config struct {
     Timeout    int       // Request timeout in seconds
     Debug      bool      // Enable debug logging
 }
+```
+
+### Retry Behavior
+
+The client automatically retries on transient failures with exponential backoff:
+
+- **Retryable errors:** 429 (rate limit), 500, 502, 503, 504
+- **Backoff:** 1s, 2s, 4s, ... (exponential)
+- **Default:** 3 retries (4 total attempts)
+- **Configurable:** Set `MaxRetries` in config
+
+```go
+client := llm.NewClient(llm.Config{
+    Provider:   llm.ProviderOpenAI,
+    Model:      "gpt-4o",
+    APIKey:     os.Getenv("OPENAI_API_KEY"),
+    MaxRetries: 5, // 6 total attempts (1 initial + 5 retries)
+})
 ```
 
 ---

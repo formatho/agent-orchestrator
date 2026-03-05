@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -12,20 +13,36 @@ import (
 	"time"
 )
 
+// RetryableError represents an error that can be retried
+type RetryableError struct {
+	Err    error
+	Status int
+}
+
+func (e *RetryableError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *RetryableError) Unwrap() error {
+	return e.Err
+}
+
 // OpenAIProvider implements the ProviderClient interface for OpenAI
 type OpenAIProvider struct {
-	apiKey  string
-	baseURL string
-	client  *http.Client
-	debug   bool
+	apiKey     string
+	baseURL    string
+	client     *http.Client
+	debug      bool
+	maxRetries int
 }
 
 // OpenAIConfig is configuration for OpenAI provider
 type OpenAIConfig struct {
-	APIKey  string
-	BaseURL string // Optional, defaults to https://api.openai.com/v1
-	Timeout int    // Timeout in seconds
-	Debug   bool
+	APIKey     string
+	BaseURL    string // Optional, defaults to https://api.openai.com/v1
+	Timeout    int    // Timeout in seconds
+	MaxRetries int    // Max retry attempts (default: 3)
+	Debug      bool
 }
 
 // NewOpenAIProvider creates a new OpenAI provider
@@ -40,10 +57,16 @@ func NewOpenAIProvider(config OpenAIConfig) *OpenAIProvider {
 		timeout = 60
 	}
 
+	maxRetries := config.MaxRetries
+	if maxRetries == 0 {
+		maxRetries = 3
+	}
+
 	return &OpenAIProvider{
-		apiKey:  config.APIKey,
-		baseURL: baseURL,
-		debug:   config.Debug,
+		apiKey:     config.APIKey,
+		baseURL:    baseURL,
+		debug:      config.Debug,
+		maxRetries: maxRetries,
 		client: &http.Client{
 			Timeout: time.Duration(timeout) * time.Second,
 		},
@@ -83,8 +106,43 @@ type openAIResponse struct {
 	} `json:"error,omitempty"`
 }
 
-// Complete sends a completion request to OpenAI
+// Complete sends a completion request to OpenAI with retry logic
 func (p *OpenAIProvider) Complete(ctx context.Context, req Request) (*Response, error) {
+	var lastErr error
+
+	for attempt := 0; attempt <= p.maxRetries; attempt++ {
+		if attempt > 0 {
+			// Exponential backoff: 1s, 2s, 4s, etc.
+			backoff := time.Duration(1<<uint(attempt-1)) * time.Second
+			if p.debug {
+				fmt.Printf("[OpenAI] Retry attempt %d after %v\n", attempt, backoff)
+			}
+
+			select {
+			case <-time.After(backoff):
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
+		}
+
+		resp, err := p.doRequest(ctx, req)
+		if err == nil {
+			return resp, nil
+		}
+
+		lastErr = err
+
+		// Check if error is retryable
+		if !p.shouldRetry(err) {
+			return nil, err
+		}
+	}
+
+	return nil, fmt.Errorf("max retries (%d) exceeded, last error: %w", p.maxRetries, lastErr)
+}
+
+// doRequest performs a single HTTP request without retry
+func (p *OpenAIProvider) doRequest(ctx context.Context, req Request) (*Response, error) {
 	// Build request body
 	model := req.Model
 	if model == "" {
@@ -122,20 +180,28 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req Request) (*Response, 
 	}
 
 	// Send request
-	resp, err := p.client.Do(httpReq)
+	httpResp, err := p.client.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+		return nil, &RetryableError{Err: err}
 	}
-	defer resp.Body.Close()
+	defer httpResp.Body.Close()
 
 	// Read response
-	respBody, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
 	if p.debug {
-		fmt.Printf("[OpenAI] Response: %s\n", string(respBody))
+		fmt.Printf("[OpenAI] Response (status %d): %s\n", httpResp.StatusCode, string(respBody))
+	}
+
+	// Check for retryable HTTP status codes
+	if p.shouldRetryHTTP(httpResp.StatusCode) {
+		return nil, &RetryableError{
+			Err:    fmt.Errorf("HTTP %d: %s", httpResp.StatusCode, string(respBody)),
+			Status: httpResp.StatusCode,
+		}
 	}
 
 	// Parse response
@@ -168,6 +234,28 @@ func (p *OpenAIProvider) Complete(ctx context.Context, req Request) (*Response, 
 			},
 		},
 	}, nil
+}
+
+// shouldRetry checks if an error is retryable
+func (p *OpenAIProvider) shouldRetry(err error) bool {
+	var retryErr *RetryableError
+	if errors.As(err, &retryErr) {
+		return true
+	}
+	return false
+}
+
+// shouldRetryHTTP checks if an HTTP status code is retryable
+func (p *OpenAIProvider) shouldRetryHTTP(statusCode int) bool {
+	// Retry on: 429 (rate limit), 500, 502, 503, 504
+	retryableCodes := map[int]bool{
+		429: true, // Too Many Requests
+		500: true, // Internal Server Error
+		502: true, // Bad Gateway
+		503: true, // Service Unavailable
+		504: true, // Gateway Timeout
+	}
+	return retryableCodes[statusCode]
 }
 
 // Stream sends a streaming completion request to OpenAI

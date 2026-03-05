@@ -11,15 +11,17 @@ import (
 func main() {
 	// Create client
 	client := llm.NewClient(llm.Config{
-		Provider: llm.ProviderOpenAI,
-		Model:    "gpt-4o",
-		APIKey:   os.Getenv("OPENAI_API_KEY"),
+		Provider:   llm.ProviderOpenAI,
+		Model:      "gpt-4o",
+		APIKey:     os.Getenv("OPENAI_API_KEY"),
+		MaxRetries: 3, // Optional: defaults to 3
 	})
 
 	// Register OpenAI provider
 	llm.RegisterOpenAI(client, llm.OpenAIConfig{
-		APIKey: os.Getenv("OPENAI_API_KEY"),
-		Debug:  true,
+		APIKey:     os.Getenv("OPENAI_API_KEY"),
+		MaxRetries: 3, // Optional: defaults to 3
+		Debug:      true,
 	})
 
 	// Simple completion
