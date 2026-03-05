@@ -1,7 +1,10 @@
 go 1.24
 
 use (
-    ./packages/llm-client
-    ./packages/agent-pool
-    ./packages/agent-skills
+	./packages/agent-config
+	./packages/agent-pool
+	./packages/agent-skills
+	./packages/cron-agents
+	./packages/llm-client
+	./packages/todo-queue
 )

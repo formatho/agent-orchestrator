@@ -1,0 +1,107 @@
+# agents.yaml - Agent Configuration Example
+# This file demonstrates the full configuration options available
+
+# Global configuration applies to all agents by default
+# Agents can override these values
+global:
+  # Default LLM configuration
+  llm:
+    provider: openai           # LLM provider: openai, anthropic, ollama, etc.
+    model: gpt-4o              # Default model
+    temperature: 0.7           # Randomness (0-2)
+    max_tokens: 2000           # Max response tokens
+    # top_p: 0.9               # Optional: nucleus sampling
+    # frequency_penalty: 0.0   # Optional: reduce repetition
+    # presence_penalty: 0.0    # Optional: encourage new topics
+    # stop_sequences:          # Optional: stop generation at these
+    #   - "END"
+    #   - "---"
+    # base_url: ""             # Optional: custom API endpoint
+    # api_key: ""              # Optional: API key (use env vars instead)
+
+  timeout: 300                 # Default timeout in seconds
+  max_retries: 3               # Default retry attempts
+  debug: false                 # Global debug mode
+  max_concurrent_tasks: 5      # Default concurrent task limit
+
+# Agent-specific configurations
+# Each agent can override global settings
+agents:
+  # Daily Report Agent
+  daily-report:
+    # LLM overrides for this agent
+    llm:
+      model: gpt-4-turbo       # Use a different model
+      temperature: 0.5         # More deterministic output
+
+    # Skill permissions
+    skills:
+      allowed:
+        - http.get             # HTTP GET requests
+        - http.post            # HTTP POST requests
+        - file.read            # Read files
+        - file.write           # Write files
+        - email.send           # Send emails
+      denied:
+        - shell.run            # No shell commands
+        - admin.*              # No admin operations
+
+    # Agent-specific overrides
+    timeout: 600               # Longer timeout for reports
+    max_concurrent_tasks: 5    # Limit concurrent tasks
+    debug: false               # Per-agent debug mode
+
+  # Code Reviewer Agent
+  code-reviewer:
+    llm:
+      provider: anthropic      # Use Anthropic
+      model: claude-3-opus     # Claude 3 Opus
+      temperature: 0.3         # Low temperature for consistency
+
+    skills:
+      allowed:
+        - file.read            # Read source code
+        - file.write           # Write reviews/comments
+        - git.*                # All git operations
+        - github.*             # GitHub API access
+
+    timeout: 600               # Longer timeout for code analysis
+    max_concurrent_tasks: 3    # Limit concurrency
+
+  # Shell Executor Agent
+  shell-executor:
+    llm:
+      model: gpt-4-turbo
+      temperature: 0.1         # Very deterministic
+
+    skills:
+      allowed:
+        - shell.run            # Execute shell commands
+        - file.*               # File operations
+
+    timeout: 1200              # Extended timeout
+    max_retries: 1             # Fewer retries for commands
+    debug: true                # Enable debugging
+
+  # Research Agent
+  researcher:
+    llm:
+      model: gpt-4o
+      temperature: 0.8         # More creative
+
+    skills:
+      allowed:
+        - http.get
+        - web.search
+        - web.scrape
+
+    max_concurrent_tasks: 10   # Higher concurrency for research
+
+    # Custom metadata
+    metadata:
+      description: "Research agent for information gathering"
+      version: "1.0"
+      tags:
+        - research
+        - web
+        - information

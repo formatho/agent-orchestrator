@@ -1,0 +1,73 @@
+# agents.toml - TOML Configuration Example
+# TOML format alternative to YAML
+
+# Global configuration
+[global]
+timeout = 300
+max_retries = 3
+debug = false
+max_concurrent_tasks = 5
+
+[global.llm]
+provider = "openai"
+model = "gpt-4o"
+temperature = 0.7
+max_tokens = 2000
+
+# Daily Report Agent
+[agents.daily-report]
+
+[agents.daily-report.llm]
+model = "gpt-4-turbo"
+temperature = 0.5
+
+[agents.daily-report.skills]
+allowed = ["http.get", "http.post", "file.read", "file.write"]
+denied = ["shell.run"]
+
+timeout = 600
+max_concurrent_tasks = 5
+
+# Code Reviewer Agent
+[agents.code-reviewer]
+
+[agents.code-reviewer.llm]
+provider = "anthropic"
+model = "claude-3-opus"
+temperature = 0.3
+
+[agents.code-reviewer.skills]
+allowed = ["file.read", "file.write", "git.*", "github.*"]
+
+timeout = 600
+max_concurrent_tasks = 3
+
+# Shell Executor Agent
+[agents.shell-executor]
+
+[agents.shell-executor.llm]
+model = "gpt-4-turbo"
+temperature = 0.1
+
+[agents.shell-executor.skills]
+allowed = ["shell.run", "file.*"]
+
+timeout = 1200
+max_retries = 1
+debug = true
+
+# Research Agent
+[agents.researcher]
+
+[agents.researcher.llm]
+model = "gpt-4o"
+temperature = 0.8
+
+[agents.researcher.skills]
+allowed = ["http.get", "web.search", "web.scrape"]
+
+max_concurrent_tasks = 10
+
+[agents.researcher.metadata]
+description = "Research agent for information gathering"
+version = "1.0"
