@@ -35,7 +35,7 @@ func main() {
 	fmt.Printf("Response: %s\n", response)
 
 	// You can also override retry behavior per-request
-	response, err = client.Complete(context.Background(), llm.Request{
+	resp, err := client.Complete(context.Background(), llm.Request{
 		Messages: []llm.Message{
 			{Role: "user", Content: "Hi"},
 		},
@@ -45,5 +45,5 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Response: %s\n", response.Content)
+	fmt.Printf("Response: %s\n", resp.Content)
 }

@@ -1,5 +1,7 @@
 # Agent Orchestrator
 
+[![CI](https://github.com/formatho/agent-orchestrator/actions/workflows/ci.yml/badge.svg)](https://github.com/formatho/agent-orchestrator/actions/workflows/ci.yml)
+
 **Spin up AI workers. Let them run. Check results later.**
 
 A local-first desktop application for managing autonomous AI agents. Built with Go + Electron.
