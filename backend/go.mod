@@ -1,6 +1,6 @@
 module github.com/formatho/agent-orchestrator/backend
 
-go 1.24
+go 1.23
 
 require (
 	github.com/fasthttp/websocket v1.5.12

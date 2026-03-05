@@ -5,35 +5,14 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      version:
-        description: 'Version to release (e.g., 0.1.0)'
-        required: false
+
+permissions:
+  contents: write
 
 jobs:
   build-backend:
     name: Build Backend (Go)
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: macos-latest
-            platform: darwin
-            arch: amd64
-            output: server-darwin-amd64
-          - os: macos-latest
-            platform: darwin
-            arch: arm64
-            output: server-darwin-arm64
-          - os: ubuntu-latest
-            platform: linux
-            arch: amd64
-            output: server-linux-amd64
-          - os: windows-latest
-            platform: windows
-            arch: amd64
-            output: server-windows-amd64.exe
-
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -41,18 +20,26 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.24'
+          go-version: '1.23'
 
-      - name: Build Backend
+      - name: Build Backend for All Platforms
         working-directory: backend
         run: |
-          GOOS=${{ matrix.platform }} GOARCH=${{ matrix.arch }} go build -ldflags="-s -w" -o bin/${{ matrix.output }} ./cmd/server
+          mkdir -p bin
+          # macOS Intel
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/server-darwin-amd64 ./cmd/server
+          # macOS Apple Silicon
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/server-darwin-arm64 ./cmd/server
+          # Linux
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/server-linux-amd64 ./cmd/server
+          # Windows
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/server-windows-amd64.exe ./cmd/server
 
-      - name: Upload Backend Artifact
+      - name: Upload Backend Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: backend-${{ matrix.platform }}-${{ matrix.arch }}
-          path: backend/bin/${{ matrix.output }}
+          name: backend-binaries
+          path: backend/bin/*
 
   build-electron:
     name: Build Electron App
@@ -82,9 +69,12 @@ jobs:
       - name: Download Backend Artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: backend-*
+          name: backend-binaries
           path: backend/bin
-          merge-multiple: true
+
+      - name: Make Backend Executable (Unix)
+        if: matrix.platform != 'win'
+        run: chmod +x backend/bin/*
 
       - name: Install Dependencies
         working-directory: electron-app
@@ -119,6 +109,7 @@ jobs:
           path: |
             electron-app/release/*.dmg
             electron-app/release/*.zip
+          if-no-files-found: warn
 
       - name: Upload Artifacts (Windows)
         if: matrix.platform == 'win'
@@ -127,7 +118,8 @@ jobs:
           name: electron-win
           path: |
             electron-app/release/*.exe
-            electron-app/release/*.nsis.zip
+            electron-app/release/*.zip
+          if-no-files-found: warn
 
       - name: Upload Artifacts (Linux)
         if: matrix.platform == 'linux'
@@ -138,6 +130,7 @@ jobs:
             electron-app/release/*.AppImage
             electron-app/release/*.deb
             electron-app/release/*.rpm
+          if-no-files-found: warn
 
   release:
     name: Create Release
@@ -153,7 +146,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           path: artifacts
-          merge-multiple: true
+
+      - name: List Artifacts
+        run: find artifacts -type f
 
       - name: Get Version from Tag
         id: get_version
@@ -167,10 +162,9 @@ jobs:
             ## Agent Orchestrator ${{ steps.get_version.outputs.VERSION }}
 
             ### Downloads
-            - **macOS (Intel)**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}-mac-x64.dmg
-            - **macOS (Apple Silicon)**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}-mac-arm64.dmg
-            - **Windows**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}-setup.exe
-            - **Linux**: Agent-Orchestrator-${{ steps.get_version.outputs.VERSION }}.AppImage
+            - **macOS**: Download the `.dmg` file for your architecture (Intel or Apple Silicon)
+            - **Windows**: Download the `.exe` installer
+            - **Linux**: Download the `.AppImage`, `.deb`, or `.rpm` file
 
             ### What's New
             See [CHANGELOG.md](./CHANGELOG.md) for details.
@@ -179,28 +173,20 @@ jobs:
             - **macOS**: Download .dmg, open, drag to Applications
             - **Windows**: Download .exe installer, run
             - **Linux**: Download .AppImage, chmod +x, run
+
+            ### System Requirements
+            - **macOS**: macOS 10.15 (Catalina) or later
+            - **Windows**: Windows 10 or later
+            - **Linux**: Any modern distribution with glibc 2.28+
           files: |
-            artifacts/**/*.dmg
-            artifacts/**/*.zip
-            artifacts/**/*.exe
-            artifacts/**/*.AppImage
-            artifacts/**/*.deb
-            artifacts/**/*.rpm
+            artifacts/electron-mac/*.dmg
+            artifacts/electron-mac/*.zip
+            artifacts/electron-win/*.exe
+            artifacts/electron-win/*.zip
+            artifacts/electron-linux/*.AppImage
+            artifacts/electron-linux/*.deb
+            artifacts/electron-linux/*.rpm
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  # Optional: Auto-update homebrew, snap, etc.
-  notify:
-    name: Notify Release
-    needs: release
-    runs-on: ubuntu-latest
-    if: success()
-
-    steps:
-      - name: Webhook Notification
-        run: |
-          curl -X POST ${{ secrets.RELEASE_WEBHOOK_URL }} \
-            -H "Content-Type: application/json" \
-            -d '{"text": "Agent Orchestrator ${{ steps.get_version.outputs.VERSION }} released! https://github.com/formatho/agent-orchestrator/releases/tag/${{ steps.get_version.outputs.VERSION }}"}' || true
