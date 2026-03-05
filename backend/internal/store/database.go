@@ -48,6 +48,7 @@ func RunMigrations(db *sql.DB) error {
 			provider TEXT,
 			model TEXT,
 			system_prompt TEXT,
+			work_dir TEXT DEFAULT '~/sandbox',
 			config TEXT,
 			metadata TEXT,
 			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -144,6 +145,9 @@ func RunMigrations(db *sql.DB) error {
 			UPDATE agents SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
 		END`
 	db.Exec(trigger)
+
+	// Add work_dir column if it doesn't exist (migration for existing databases)
+	db.Exec(`ALTER TABLE agents ADD COLUMN work_dir TEXT DEFAULT '~/sandbox'`)
 
 	trigger = `CREATE TRIGGER IF NOT EXISTS update_todo_timestamp 
 		AFTER UPDATE ON todos

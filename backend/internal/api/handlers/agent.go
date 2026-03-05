@@ -116,6 +116,32 @@ func (h *AgentHandler) Resume(c *fiber.Ctx) error {
 	return c.JSON(agent)
 }
 
+// Start starts an agent (alias for Resume).
+func (h *AgentHandler) Start(c *fiber.Ctx) error {
+	id := c.Params("id")
+	agent, err := h.service.Start(id)
+	if err != nil {
+		if models.IsNotFoundError(err) {
+			return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(agent)
+}
+
+// Stop stops an agent (alias for Pause).
+func (h *AgentHandler) Stop(c *fiber.Ctx) error {
+	id := c.Params("id")
+	agent, err := h.service.Stop(id)
+	if err != nil {
+		if models.IsNotFoundError(err) {
+			return c.Status(404).JSON(fiber.Map{"error": err.Error()})
+		}
+		return c.Status(500).JSON(fiber.Map{"error": err.Error()})
+	}
+	return c.JSON(agent)
+}
+
 // parseBoolParam parses a boolean query parameter.
 func parseBoolParam(c *fiber.Ctx, key string, defaultValue bool) bool {
 	val := c.Query(key)

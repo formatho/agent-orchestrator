@@ -34,7 +34,7 @@ func NewAgentService(db *sql.DB, hub *websocket.Hub) *AgentService {
 
 // List returns all agents.
 func (s *AgentService) List() ([]*models.Agent, error) {
-	query := `SELECT id, name, status, provider, model, system_prompt, config, metadata,
+	query := `SELECT id, name, status, provider, model, system_prompt, work_dir, config, metadata,
 		created_at, updated_at, started_at, stopped_at, error
 		FROM agents ORDER BY created_at DESC`
 
@@ -49,10 +49,10 @@ func (s *AgentService) List() ([]*models.Agent, error) {
 		a := &models.Agent{}
 		var config, metadata sql.NullString
 		var startedAt, stoppedAt sql.NullTime
-		var provider, model, systemPrompt, agentError sql.NullString
+		var provider, model, systemPrompt, workDir, agentError sql.NullString
 
 		err := rows.Scan(
-			&a.ID, &a.Name, &a.Status, &provider, &model, &systemPrompt,
+			&a.ID, &a.Name, &a.Status, &provider, &model, &systemPrompt, &workDir,
 			&config, &metadata, &a.CreatedAt, &a.UpdatedAt,
 			&startedAt, &stoppedAt, &agentError,
 		)
@@ -63,6 +63,7 @@ func (s *AgentService) List() ([]*models.Agent, error) {
 		a.Provider = provider.String
 		a.Model = model.String
 		a.SystemPrompt = systemPrompt.String
+		a.WorkDir = workDir.String
 		a.Error = agentError.String
 		a.StartedAt = &startedAt.Time
 		if !startedAt.Valid {
@@ -88,22 +89,22 @@ func (s *AgentService) List() ([]*models.Agent, error) {
 
 // Get returns a single agent by ID.
 func (s *AgentService) Get(id string) (*models.Agent, error) {
-	query := `SELECT id, name, status, provider, model, system_prompt, config, metadata,
+	query := `SELECT id, name, status, provider, model, system_prompt, work_dir, config, metadata,
 		created_at, updated_at, started_at, stopped_at, error
 		FROM agents WHERE id = ?`
 
 	a := &models.Agent{}
 	var config, metadata sql.NullString
 	var startedAt, stoppedAt sql.NullTime
-	var provider, model, systemPrompt, agentError sql.NullString
+	var provider, model, systemPrompt, workDir, agentError sql.NullString
 
 	err := s.db.QueryRow(query, id).Scan(
-		&a.ID, &a.Name, &a.Status, &provider, &model, &systemPrompt,
+		&a.ID, &a.Name, &a.Status, &provider, &model, &systemPrompt, &workDir,
 		&config, &metadata, &a.CreatedAt, &a.UpdatedAt,
 		&startedAt, &stoppedAt, &agentError,
 	)
 	if err == sql.ErrNoRows {
-		return nil, models.ErrNotFoundWithID("Agent", id)
+		return nil, models.ErrNotFound
 	}
 	if err != nil {
 		return nil, err
@@ -112,14 +113,13 @@ func (s *AgentService) Get(id string) (*models.Agent, error) {
 	a.Provider = provider.String
 	a.Model = model.String
 	a.SystemPrompt = systemPrompt.String
+	a.WorkDir = workDir.String
 	a.Error = agentError.String
-	a.StartedAt = &startedAt.Time
-	if !startedAt.Valid {
-		a.StartedAt = nil
+	if startedAt.Valid {
+		a.StartedAt = &startedAt.Time
 	}
-	a.StoppedAt = &stoppedAt.Time
-	if !stoppedAt.Valid {
-		a.StoppedAt = nil
+	if stoppedAt.Valid {
+		a.StoppedAt = &stoppedAt.Time
 	}
 
 	if config.Valid && config.String != "" {
@@ -145,11 +145,11 @@ func (s *AgentService) Create(req *models.AgentCreate) (*models.Agent, error) {
 	configJSON, _ := json.Marshal(req.Config)
 	metadataJSON, _ := json.Marshal(req.Metadata)
 
-	query := `INSERT INTO agents (id, name, status, provider, model, system_prompt, config, metadata, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+	query := `INSERT INTO agents (id, name, status, provider, model, system_prompt, work_dir, config, metadata, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
 
 	_, err := s.db.Exec(query, id, req.Name, status, req.Provider, req.Model,
-		req.SystemPrompt, string(configJSON), string(metadataJSON), now, now)
+		req.SystemPrompt, req.WorkDir, string(configJSON), string(metadataJSON), now, now)
 	if err != nil {
 		return nil, err
 	}
@@ -191,6 +191,10 @@ func (s *AgentService) Update(id string, req *models.AgentUpdate) (*models.Agent
 	if req.SystemPrompt != nil {
 		query += `, system_prompt = ?`
 		args = append(args, *req.SystemPrompt)
+	}
+	if req.WorkDir != nil {
+		query += `, work_dir = ?`
+		args = append(args, *req.WorkDir)
 	}
 	if req.Config != nil {
 		configJSON, _ := json.Marshal(req.Config)
@@ -237,6 +241,50 @@ func (s *AgentService) Pause(id string) (*models.Agent, error) {
 // Resume resumes a paused agent.
 func (s *AgentService) Resume(id string) (*models.Agent, error) {
 	return s.updateStatus(id, models.AgentStatusRunning)
+}
+
+// Start starts an agent (alias for Resume).
+func (s *AgentService) Start(id string) (*models.Agent, error) {
+	now := time.Now().UTC()
+	if _, err := s.Get(id); err != nil {
+		return nil, err
+	}
+
+	query := `UPDATE agents SET status = ?, updated_at = ?, started_at = ? WHERE id = ?`
+	_, err := s.db.Exec(query, models.AgentStatusRunning, now, now, id)
+	if err != nil {
+		return nil, err
+	}
+
+	agent, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+
+	s.hub.BroadcastAgentStatus(id, models.AgentStatusRunning)
+	return agent, nil
+}
+
+// Stop stops an agent (alias for Pause).
+func (s *AgentService) Stop(id string) (*models.Agent, error) {
+	now := time.Now().UTC()
+	if _, err := s.Get(id); err != nil {
+		return nil, err
+	}
+
+	query := `UPDATE agents SET status = ?, updated_at = ?, stopped_at = ? WHERE id = ?`
+	_, err := s.db.Exec(query, models.AgentStatusIdle, now, now, id)
+	if err != nil {
+		return nil, err
+	}
+
+	agent, err := s.Get(id)
+	if err != nil {
+		return nil, err
+	}
+
+	s.hub.BroadcastAgentStatus(id, models.AgentStatusIdle)
+	return agent, nil
 }
 
 func (s *AgentService) updateStatus(id string, status models.AgentStatus) (*models.Agent, error) {

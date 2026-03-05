@@ -101,6 +101,10 @@ func (s *ConfigService) TestLLM(req *models.LLMTestRequest) (*models.LLMTestResp
 			APIKey: req.APIKey,
 			Model:  req.Model,
 		})
+	case "ollama":
+		provider = llmclient.NewOllamaProvider(llmclient.OllamaConfig{
+			BaseURL: req.BaseURL,
+		})
 	default:
 		return &models.LLMTestResponse{
 			Success: false,

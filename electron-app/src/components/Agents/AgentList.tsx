@@ -40,15 +40,19 @@ interface CreateAgentModalProps {
 
 interface CreateAgentRequest {
   name: string
+  provider: string
   type: string
   model: string
+  work_dir: string
 }
 
 function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModalProps) {
   const [formData, setFormData] = useState<CreateAgentRequest>({
     name: '',
+    provider: 'openai',
     type: AGENT_TYPES[0],
     model: 'gpt-4o',
+    work_dir: '~/sandbox',
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -65,7 +69,7 @@ function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModalProps) 
     
     try {
       await onSubmit(formData)
-      setFormData({ name: '', type: AGENT_TYPES[0], model: 'gpt-4o' })
+      setFormData({ name: '', provider: 'openai', type: AGENT_TYPES[0], model: 'gpt-4o', work_dir: '~/sandbox' })
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create agent')
@@ -112,16 +116,16 @@ function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModalProps) 
           
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-2">
-              Type
+              Provider
             </label>
             <select
-              value={formData.type}
-              onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+              value={formData.provider}
+              onChange={(e) => setFormData({ ...formData, provider: e.target.value })}
               className="input w-full"
             >
-              {AGENT_TYPES.map((type) => (
-                <option key={type} value={type}>{type}</option>
-              ))}
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+              <option value="ollama">Ollama (Local)</option>
             </select>
           </div>
           
@@ -138,6 +142,20 @@ function CreateAgentModal({ isOpen, onClose, onSubmit }: CreateAgentModalProps) 
                 <option key={model.value} value={model.value}>{model.label}</option>
               ))}
             </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              Working Directory
+            </label>
+            <input
+              type="text"
+              value={formData.work_dir}
+              onChange={(e) => setFormData({ ...formData, work_dir: e.target.value })}
+              placeholder="e.g., ~/sandbox or /Users/you/projects"
+              className="input w-full font-mono text-sm"
+            />
+            <p className="mt-1 text-xs text-text-muted">Directory where the agent will execute tasks</p>
           </div>
           
           <div className="flex gap-3 pt-4">

@@ -136,6 +136,8 @@ func (s *Server) setupRoutes() {
 	agents.Get("/:id", s.agentH.Get)
 	agents.Put("/:id", s.agentH.Update)
 	agents.Delete("/:id", s.agentH.Delete)
+	agents.Post("/:id/start", s.agentH.Start)
+	agents.Post("/:id/stop", s.agentH.Stop)
 	agents.Post("/:id/pause", s.agentH.Pause)
 	agents.Post("/:id/resume", s.agentH.Resume)
 

@@ -154,22 +154,36 @@ export default function ConfigEditor() {
     setTestStatus('testing')
     
     try {
-      // Simulate API test
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      const modelConfig = config.models.default
       
-      // Random success/failure for demo
-      const success = Math.random() > 0.3
+      // Call the actual API to test LLM connection
+      const response = await fetch(`${config.api.baseUrl}/api/config/test-llm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          provider: modelConfig.provider,
+          api_key: modelConfig.apiKey,
+          model: modelConfig.modelName,
+          base_url: modelConfig.baseUrl,
+        }),
+      })
       
-      if (success) {
+      const result = await response.json()
+      
+      if (result.success) {
         setTestStatus('success')
         setTimeout(() => setTestStatus('idle'), 3000)
       } else {
+        console.error('LLM test failed:', result.message)
         setTestStatus('error')
-        setTimeout(() => setTestStatus('idle'), 3000)
+        setTimeout(() => setTestStatus('idle'), 5000)
       }
     } catch (err) {
+      console.error('Failed to test LLM connection:', err)
       setTestStatus('error')
-      setTimeout(() => setTestStatus('idle'), 3000)
+      setTimeout(() => setTestStatus('idle'), 5000)
     }
   }
 
