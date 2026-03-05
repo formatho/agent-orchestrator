@@ -13,23 +13,6 @@ import (
 	"time"
 )
 
-// Helper for errors.As
-var _ = errors.As
-
-// RetryableError represents an error that can be retried
-type RetryableError struct {
-	Err    error
-	Status int
-}
-
-func (e *RetryableError) Error() string {
-	return e.Err.Error()
-}
-
-func (e *RetryableError) Unwrap() error {
-	return e.Err
-}
-
 // OpenAIProvider implements the ProviderClient interface for OpenAI
 type OpenAIProvider struct {
 	apiKey     string
@@ -344,6 +327,14 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan Stream
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 
+	// Check HTTP status before streaming
+	if resp.StatusCode >= 400 {
+		respBody, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		close(ch)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
 	// Start goroutine to read stream
 	go func() {
 		defer close(ch)
@@ -351,6 +342,17 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan Stream
 
 		scanner := bufio.NewScanner(resp.Body)
 		for scanner.Scan() {
+			// Check for context cancellation
+			select {
+			case <-ctx.Done():
+				select {
+				case ch <- StreamChunk{Error: ctx.Err(), Finished: true}:
+				default:
+				}
+				return
+			default:
+			}
+
 			line := scanner.Text()
 
 			// Skip empty lines
@@ -367,7 +369,10 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan Stream
 
 			// Check for stream end
 			if data == "[DONE]" {
-				ch <- StreamChunk{Finished: true}
+				select {
+				case ch <- StreamChunk{Finished: true}:
+				case <-ctx.Done():
+				}
 				return
 			}
 
@@ -385,15 +390,25 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan Stream
 				if p.debug {
 					fmt.Printf("[OpenAI] Stream error: %s\n", openAIResp.Error.Message)
 				}
+				select {
+				case ch <- StreamChunk{Error: fmt.Errorf("stream error: %s", openAIResp.Error.Message), Finished: true}:
+				case <-ctx.Done():
+				}
 				return
 			}
 
 			// Send chunk
 			if len(openAIResp.Choices) > 0 {
 				choice := openAIResp.Choices[0]
-				ch <- StreamChunk{
+				chunk := StreamChunk{
 					Delta:    choice.Delta,
 					Finished: choice.FinishReason != "",
+				}
+
+				select {
+				case ch <- chunk:
+				case <-ctx.Done():
+					return
 				}
 
 				if choice.FinishReason != "" {
@@ -405,6 +420,10 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan Stream
 		if err := scanner.Err(); err != nil {
 			if p.debug {
 				fmt.Printf("[OpenAI] Scanner error: %v\n", err)
+			}
+			select {
+			case ch <- StreamChunk{Error: err, Finished: true}:
+			case <-ctx.Done():
 			}
 		}
 	}()

@@ -7,6 +7,20 @@ import (
 
 // Error types for better error handling
 
+// RetryableError represents an error that can be retried
+type RetryableError struct {
+	Err    error
+	Status int
+}
+
+func (e *RetryableError) Error() string {
+	return e.Err.Error()
+}
+
+func (e *RetryableError) Unwrap() error {
+	return e.Err
+}
+
 // AuthenticationError indicates an invalid API key or authentication failure
 type AuthenticationError struct {
 	Provider string

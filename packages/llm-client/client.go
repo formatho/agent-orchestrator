@@ -122,6 +122,7 @@ type Choice struct {
 type StreamChunk struct {
 	Delta    Message `json:"delta"`
 	Finished bool    `json:"finished"`
+	Error    error   `json:"-"` // Stream error, if any
 }
 
 // Config represents client configuration
@@ -246,6 +247,9 @@ func (c *Client) SimpleStream(ctx context.Context, prompt string, writer io.Writ
 	}
 
 	for chunk := range ch {
+		if chunk.Error != nil {
+			return chunk.Error
+		}
 		if _, err := writer.Write([]byte(chunk.Delta.Content)); err != nil {
 			return err
 		}
