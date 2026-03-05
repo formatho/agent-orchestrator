@@ -128,8 +128,10 @@ type TopicHandler = (data: unknown) => void
 
 class TopicManager {
   private subscriptions: Map<string, Set<TopicHandler>> = new Map()
+  private client: WebSocketClient
 
-  constructor(private client: WebSocketClient) {
+  constructor(client: WebSocketClient) {
+    this.client = client
     // Handle incoming messages and route to topic subscribers
     client.onMessage((data: unknown) => {
       if (typeof data === 'object' && data !== null && 'topic' in data) {

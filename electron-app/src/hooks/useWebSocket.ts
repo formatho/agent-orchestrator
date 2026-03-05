@@ -12,7 +12,7 @@ interface WebSocketState {
 }
 
 export function useWebSocket(options: UseWebSocketOptions = {}) {
-  const { autoConnect = true, topics = [] } = options
+  const { autoConnect = true } = options
   const [state, setState] = useState<WebSocketState>({
     isConnected: false,
     error: null,

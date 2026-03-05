@@ -29,6 +29,8 @@ export default function AgentDetail() {
   const { id } = useParams()
 
   // In a real app, you would fetch agent data based on id
+  // For now, using mock data but id is available for API calls
+  console.debug('Viewing agent:', id)
   const agent = mockAgentDetail
 
   return (

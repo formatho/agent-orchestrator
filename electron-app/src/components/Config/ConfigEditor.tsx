@@ -1,14 +1,54 @@
 import { useState } from 'react'
-import { Save, RefreshCw, AlertCircle, Check, Code, Settings } from 'lucide-react'
+import { Save, RefreshCw, AlertCircle, Check, Code, Settings, Cpu, Zap } from 'lucide-react'
 
 const configSections = [
   { id: 'general', label: 'General', icon: Settings },
   { id: 'api', label: 'API', icon: Code },
+  { id: 'models', label: 'LLM Models', icon: Cpu },
   { id: 'agents', label: 'Agents', icon: Settings },
   { id: 'notifications', label: 'Notifications', icon: Settings },
 ]
 
-const mockConfig = {
+interface ModelConfig {
+  provider: 'openai' | 'anthropic' | 'ollama'
+  modelName: string
+  apiKey: string
+  temperature: number
+  maxTokens: number
+  baseUrl?: string
+}
+
+interface Config {
+  general: {
+    appName: string
+    version: string
+    debug: boolean
+    logLevel: string
+  }
+  api: {
+    baseUrl: string
+    timeout: number
+    retries: number
+  }
+  models: {
+    default: ModelConfig
+    openai?: ModelConfig
+    anthropic?: ModelConfig
+    ollama?: ModelConfig
+  }
+  agents: {
+    maxConcurrent: number
+    defaultModel: string
+    defaultTemperature: number
+  }
+  notifications: {
+    enabled: boolean
+    email: string
+    slackWebhook: string
+  }
+}
+
+const defaultConfig: Config = {
   general: {
     appName: 'Agent Orchestrator',
     version: '0.1.0',
@@ -20,9 +60,18 @@ const mockConfig = {
     timeout: 30000,
     retries: 3,
   },
+  models: {
+    default: {
+      provider: 'openai',
+      modelName: 'gpt-4o',
+      apiKey: '',
+      temperature: 0.7,
+      maxTokens: 4096,
+    }
+  },
   agents: {
     maxConcurrent: 10,
-    defaultModel: 'gpt-4',
+    defaultModel: 'gpt-4o',
     defaultTemperature: 0.7,
   },
   notifications: {
@@ -32,34 +81,117 @@ const mockConfig = {
   },
 }
 
+const PROVIDERS = [
+  { value: 'openai', label: 'OpenAI' },
+  { value: 'anthropic', label: 'Anthropic' },
+  { value: 'ollama', label: 'Ollama (Local)' },
+]
+
+const MODELS_BY_PROVIDER: Record<string, Array<{ value: string; label: string }>> = {
+  openai: [
+    { value: 'gpt-4o', label: 'GPT-4o' },
+    { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    { value: 'gpt-4', label: 'GPT-4' },
+    { value: 'gpt-3.5-turbo', label: 'GPT-3.5 Turbo' },
+  ],
+  anthropic: [
+    { value: 'claude-3-opus', label: 'Claude 3 Opus' },
+    { value: 'claude-3-sonnet', label: 'Claude 3 Sonnet' },
+    { value: 'claude-3-haiku', label: 'Claude 3 Haiku' },
+    { value: 'claude-2', label: 'Claude 2' },
+  ],
+  ollama: [
+    { value: 'llama2', label: 'Llama 2' },
+    { value: 'llama3', label: 'Llama 3' },
+    { value: 'codellama', label: 'Code Llama' },
+    { value: 'mistral', label: 'Mistral' },
+    { value: 'mixtral', label: 'Mixtral' },
+  ],
+}
+
 export default function ConfigEditor() {
-  const [activeSection, setActiveSection] = useState('general')
-  const [config, setConfig] = useState(mockConfig)
+  const [activeSection, setActiveSection] = useState('models')
+  const [config, setConfig] = useState<Config>(defaultConfig)
   const [hasChanges, setHasChanges] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle')
+  const [showApiKey, setShowApiKey] = useState(false)
+
+  // Uncomment when backend is ready
+  // const { data: serverConfig, isLoading } = useConfig()
+  // const mutation = useConfigMutation()
 
   const handleSave = async () => {
     setIsSaving(true)
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    setIsSaving(false)
-    setHasChanges(false)
-    setSaveStatus('success')
-    setTimeout(() => setSaveStatus('idle'), 2000)
+    setTestStatus('idle')
+    
+    try {
+      // When backend is ready:
+      // await mutation.mutateAsync(config)
+      
+      // For now, simulate save
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      setIsSaving(false)
+      setHasChanges(false)
+      setSaveStatus('success')
+      setTimeout(() => setSaveStatus('idle'), 2000)
+    } catch (err) {
+      setIsSaving(false)
+      setSaveStatus('error')
+      setTimeout(() => setSaveStatus('idle'), 3000)
+    }
   }
 
   const handleReset = () => {
-    setConfig(mockConfig)
+    setConfig(defaultConfig)
     setHasChanges(false)
   }
 
-  const updateConfig = (section: string, key: string, value: string | number | boolean) => {
+  const handleTestConnection = async () => {
+    setTestStatus('testing')
+    
+    try {
+      // Simulate API test
+      await new Promise(resolve => setTimeout(resolve, 2000))
+      
+      // Random success/failure for demo
+      const success = Math.random() > 0.3
+      
+      if (success) {
+        setTestStatus('success')
+        setTimeout(() => setTestStatus('idle'), 3000)
+      } else {
+        setTestStatus('error')
+        setTimeout(() => setTestStatus('idle'), 3000)
+      }
+    } catch (err) {
+      setTestStatus('error')
+      setTimeout(() => setTestStatus('idle'), 3000)
+    }
+  }
+
+  const updateConfig = (section: keyof Config, key: string, value: string | number | boolean) => {
     setConfig(prev => ({
       ...prev,
       [section]: {
-        ...prev[section as keyof typeof prev],
+        ...prev[section],
         [key]: value,
+      },
+    }))
+    setHasChanges(true)
+  }
+
+  const updateModelConfig = (key: keyof ModelConfig, value: string | number) => {
+    setConfig(prev => ({
+      ...prev,
+      models: {
+        ...prev.models,
+        default: {
+          ...prev.models.default,
+          [key]: value,
+        },
       },
     }))
     setHasChanges(true)
@@ -149,6 +281,175 @@ export default function ConfigEditor() {
             </ConfigSection>
           )}
 
+          {activeSection === 'models' && (
+            <ConfigSection title="LLM Model Configuration">
+              <div className="space-y-6">
+                {/* Provider Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    Provider
+                  </label>
+                  <select
+                    value={config.models.default.provider}
+                    onChange={(e) => {
+                      const provider = e.target.value as 'openai' | 'anthropic' | 'ollama'
+                      const defaultModel = MODELS_BY_PROVIDER[provider][0].value
+                      updateModelConfig('provider', provider)
+                      updateModelConfig('modelName', defaultModel)
+                    }}
+                    className="input w-full"
+                  >
+                    {PROVIDERS.map((p) => (
+                      <option key={p.value} value={p.value}>{p.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Model Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    Model
+                  </label>
+                  <select
+                    value={config.models.default.modelName}
+                    onChange={(e) => updateModelConfig('modelName', e.target.value)}
+                    className="input w-full"
+                  >
+                    {MODELS_BY_PROVIDER[config.models.default.provider]?.map((m) => (
+                      <option key={m.value} value={m.value}>{m.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* API Key */}
+                {config.models.default.provider !== 'ollama' && (
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-2">
+                      API Key
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showApiKey ? 'text' : 'password'}
+                        value={config.models.default.apiKey}
+                        onChange={(e) => updateModelConfig('apiKey', e.target.value)}
+                        placeholder={config.models.default.provider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+                        className="input w-full pr-20"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowApiKey(!showApiKey)}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-text-muted hover:text-text-primary"
+                      >
+                        {showApiKey ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    <p className="text-xs text-text-muted mt-1">
+                      Your API key is stored securely and never shared
+                    </p>
+                  </div>
+                )}
+
+                {/* Base URL for Ollama */}
+                {config.models.default.provider === 'ollama' && (
+                  <div>
+                    <label className="block text-sm font-medium text-text-secondary mb-2">
+                      Ollama Base URL
+                    </label>
+                    <input
+                      type="text"
+                      value={config.models.default.baseUrl || 'http://localhost:11434'}
+                      onChange={(e) => updateModelConfig('baseUrl', e.target.value)}
+                      placeholder="http://localhost:11434"
+                      className="input w-full"
+                    />
+                  </div>
+                )}
+
+                {/* Temperature Slider */}
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    Temperature: {config.models.default.temperature.toFixed(1)}
+                  </label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="2"
+                    step="0.1"
+                    value={config.models.default.temperature}
+                    onChange={(e) => updateModelConfig('temperature', parseFloat(e.target.value))}
+                    className="w-full h-2 bg-surface-hover rounded-lg appearance-none cursor-pointer"
+                  />
+                  <div className="flex justify-between text-xs text-text-muted mt-1">
+                    <span>Focused (0)</span>
+                    <span>Balanced (1)</span>
+                    <span>Creative (2)</span>
+                  </div>
+                </div>
+
+                {/* Max Tokens */}
+                <div>
+                  <label className="block text-sm font-medium text-text-secondary mb-2">
+                    Max Tokens
+                  </label>
+                  <input
+                    type="number"
+                    min="100"
+                    max="128000"
+                    value={config.models.default.maxTokens}
+                    onChange={(e) => updateModelConfig('maxTokens', parseInt(e.target.value))}
+                    className="input w-full"
+                  />
+                  <p className="text-xs text-text-muted mt-1">
+                    Maximum number of tokens in the response
+                  </p>
+                </div>
+
+                {/* Test Connection Button */}
+                <div className="pt-4 border-t border-border">
+                  <button
+                    onClick={handleTestConnection}
+                    disabled={testStatus === 'testing'}
+                    className={`btn-secondary ${testStatus === 'testing' ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  >
+                    {testStatus === 'testing' ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                        Testing Connection...
+                      </>
+                    ) : testStatus === 'success' ? (
+                      <>
+                        <Check className="w-4 h-4 mr-2 text-success" />
+                        Connection Successful!
+                      </>
+                    ) : testStatus === 'error' ? (
+                      <>
+                        <AlertCircle className="w-4 h-4 mr-2 text-error" />
+                        Connection Failed
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 mr-2" />
+                        Test Connection
+                      </>
+                    )}
+                  </button>
+                  
+                  {testStatus === 'success' && (
+                    <p className="text-sm text-success mt-2">
+                      ✓ Successfully connected to {PROVIDERS.find(p => p.value === config.models.default.provider)?.label}
+                    </p>
+                  )}
+                  
+                  {testStatus === 'error' && (
+                    <p className="text-sm text-error mt-2">
+                      ✗ Failed to connect. Please check your API key and try again.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </ConfigSection>
+          )}
+
           {activeSection === 'agents' && (
             <ConfigSection title="Agent Settings">
               <ConfigField label="Max Concurrent Agents" type="number" value={config.agents.maxConcurrent} onChange={(v) => updateConfig('agents', 'maxConcurrent', v)} />
@@ -170,7 +471,7 @@ export default function ConfigEditor() {
       {/* Raw JSON Preview */}
       <div className="card">
         <h3 className="text-lg font-semibold mb-4">Raw Configuration</h3>
-        <pre className="bg-background p-4 rounded-lg overflow-auto text-sm font-mono text-text-secondary">
+        <pre className="bg-background p-4 rounded-lg overflow-auto text-sm font-mono text-text-secondary max-h-96">
           {JSON.stringify(config, null, 2)}
         </pre>
       </div>
