@@ -2,10 +2,4 @@ go 1.24
 
 use (
     ./packages/llm-client
-    ./packages/agent-pool
-    ./packages/agent-skills
-    ./packages/todo-queue
-    ./packages/cron-agents
-    ./packages/agent-config
-    ./cmd/orchestrator
 )

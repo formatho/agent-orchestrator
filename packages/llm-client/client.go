@@ -17,6 +17,7 @@ package llm
 
 import (
 	"context"
+	"fmt"
 	"io"
 )
 
@@ -171,9 +172,9 @@ func (c *Client) CountTokens(text string) int {
 
 // initProvider initializes a provider client
 func (c *Client) initProvider(provider Provider) error {
-	// TODO: Implement provider initialization
-	// This will be implemented in providers/openai.go, providers/anthropic.go, etc.
-	return nil
+	// Provider must be registered using RegisterOpenAI, RegisterAnthropic, etc.
+	// or set explicitly using SetProvider
+	return fmt.Errorf("provider %s not registered - use RegisterOpenAI() or SetProvider() to initialize", provider)
 }
 
 // SetProvider sets a custom provider implementation

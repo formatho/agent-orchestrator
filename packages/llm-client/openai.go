@@ -1,0 +1,292 @@
+package llm
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+)
+
+// OpenAIProvider implements the ProviderClient interface for OpenAI
+type OpenAIProvider struct {
+	apiKey  string
+	baseURL string
+	client  *http.Client
+	debug   bool
+}
+
+// OpenAIConfig is configuration for OpenAI provider
+type OpenAIConfig struct {
+	APIKey  string
+	BaseURL string // Optional, defaults to https://api.openai.com/v1
+	Timeout int    // Timeout in seconds
+	Debug   bool
+}
+
+// NewOpenAIProvider creates a new OpenAI provider
+func NewOpenAIProvider(config OpenAIConfig) *OpenAIProvider {
+	baseURL := config.BaseURL
+	if baseURL == "" {
+		baseURL = "https://api.openai.com/v1"
+	}
+
+	timeout := config.Timeout
+	if timeout == 0 {
+		timeout = 60
+	}
+
+	return &OpenAIProvider{
+		apiKey:  config.APIKey,
+		baseURL: baseURL,
+		debug:   config.Debug,
+		client: &http.Client{
+			Timeout: time.Duration(timeout) * time.Second,
+		},
+	}
+}
+
+// openAIRequest represents the request body for OpenAI API
+type openAIRequest struct {
+	Model            string        `json:"model"`
+	Messages         []Message     `json:"messages"`
+	MaxTokens        int           `json:"max_tokens,omitempty"`
+	Temperature      float64       `json:"temperature,omitempty"`
+	TopP             float64       `json:"top_p,omitempty"`
+	Stop             []string      `json:"stop,omitempty"`
+	FrequencyPenalty float64       `json:"frequency_penalty,omitempty"`
+	PresencePenalty  float64       `json:"presence_penalty,omitempty"`
+	Stream           bool          `json:"stream,omitempty"`
+}
+
+// openAIResponse represents the response from OpenAI API
+type openAIResponse struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	Model   string `json:"model"`
+	Choices []struct {
+		Index        int     `json:"index"`
+		Message      Message `json:"message"`
+		Delta        Message `json:"delta,omitempty"`
+		FinishReason string  `json:"finish_reason"`
+	} `json:"choices"`
+	Usage Usage `json:"usage"`
+	Error *struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    string `json:"code"`
+	} `json:"error,omitempty"`
+}
+
+// Complete sends a completion request to OpenAI
+func (p *OpenAIProvider) Complete(ctx context.Context, req Request) (*Response, error) {
+	// Build request body
+	model := req.Model
+	if model == "" {
+		model = "gpt-4o" // Default model
+	}
+
+	openAIReq := openAIRequest{
+		Model:            model,
+		Messages:         req.Messages,
+		MaxTokens:        req.MaxTokens,
+		Temperature:      req.Temperature,
+		TopP:             req.TopP,
+		Stop:             req.Stop,
+		FrequencyPenalty: req.FrequencyPenalty,
+		PresencePenalty:  req.PresencePenalty,
+		Stream:           false,
+	}
+
+	body, err := json.Marshal(openAIReq)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	if p.debug {
+		fmt.Printf("[OpenAI] Request: %s\n", string(body))
+	}
+
+	// Send request
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Read response
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if p.debug {
+		fmt.Printf("[OpenAI] Response: %s\n", string(respBody))
+	}
+
+	// Parse response
+	var openAIResp openAIResponse
+	if err := json.Unmarshal(respBody, &openAIResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	// Check for error
+	if openAIResp.Error != nil {
+		return nil, fmt.Errorf("OpenAI API error: %s (code: %s)", openAIResp.Error.Message, openAIResp.Error.Code)
+	}
+
+	// Convert to our response format
+	if len(openAIResp.Choices) == 0 {
+		return nil, fmt.Errorf("no choices in response")
+	}
+
+	choice := openAIResp.Choices[0]
+	return &Response{
+		ID:      openAIResp.ID,
+		Model:   openAIResp.Model,
+		Content: choice.Message.Content,
+		Usage:   openAIResp.Usage,
+		Choices: []Choice{
+			{
+				Index:        choice.Index,
+				Message:      choice.Message,
+				FinishReason: choice.FinishReason,
+			},
+		},
+	}, nil
+}
+
+// Stream sends a streaming completion request to OpenAI
+func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan StreamChunk, error) {
+	ch := make(chan StreamChunk, 100)
+
+	// Build request body
+	model := req.Model
+	if model == "" {
+		model = "gpt-4o"
+	}
+
+	openAIReq := openAIRequest{
+		Model:            model,
+		Messages:         req.Messages,
+		MaxTokens:        req.MaxTokens,
+		Temperature:      req.Temperature,
+		TopP:             req.TopP,
+		Stop:             req.Stop,
+		FrequencyPenalty: req.FrequencyPenalty,
+		PresencePenalty:  req.PresencePenalty,
+		Stream:           true,
+	}
+
+	body, err := json.Marshal(openAIReq)
+	if err != nil {
+		close(ch)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Create HTTP request
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		close(ch)
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
+
+	// Send request
+	resp, err := p.client.Do(httpReq)
+	if err != nil {
+		close(ch)
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+
+	// Start goroutine to read stream
+	go func() {
+		defer close(ch)
+		defer resp.Body.Close()
+
+		scanner := bufio.NewScanner(resp.Body)
+		for scanner.Scan() {
+			line := scanner.Text()
+
+			// Skip empty lines
+			if line == "" {
+				continue
+			}
+
+			// Check for data prefix
+			if !strings.HasPrefix(line, "data: ") {
+				continue
+			}
+
+			data := strings.TrimPrefix(line, "data: ")
+
+			// Check for stream end
+			if data == "[DONE]" {
+				ch <- StreamChunk{Finished: true}
+				return
+			}
+
+			// Parse the chunk
+			var openAIResp openAIResponse
+			if err := json.Unmarshal([]byte(data), &openAIResp); err != nil {
+				if p.debug {
+					fmt.Printf("[OpenAI] Failed to parse chunk: %v\n", err)
+				}
+				continue
+			}
+
+			// Check for error
+			if openAIResp.Error != nil {
+				if p.debug {
+					fmt.Printf("[OpenAI] Stream error: %s\n", openAIResp.Error.Message)
+				}
+				return
+			}
+
+			// Send chunk
+			if len(openAIResp.Choices) > 0 {
+				choice := openAIResp.Choices[0]
+				ch <- StreamChunk{
+					Delta:    choice.Delta,
+					Finished: choice.FinishReason != "",
+				}
+
+				if choice.FinishReason != "" {
+					return
+				}
+			}
+		}
+
+		if err := scanner.Err(); err != nil {
+			if p.debug {
+				fmt.Printf("[OpenAI] Scanner error: %v\n", err)
+			}
+		}
+	}()
+
+	return ch, nil
+}
+
+// CountTokens counts tokens using OpenAI's tokenizer
+// This is a rough approximation. For accurate counting, use tiktoken
+func (p *OpenAIProvider) CountTokens(text string) int {
+	// Rough approximation: 1 token ≈ 4 characters
+	// This is not accurate but works for estimation
+	return len(text) / 4
+}
