@@ -25,11 +25,17 @@ type AgentService struct {
 
 // NewAgentService creates a new agent service.
 func NewAgentService(db *sql.DB, hub *websocket.Hub) *AgentService {
-	return &AgentService{
+	service := &AgentService{
 		db:   db,
 		hub:  hub,
 		pool: agentpool.New(agentpool.Config{MaxAgents: 100}),
 	}
+
+	// Reset any agents that are marked as "running" but aren't actually running
+	// This can happen when the application restarts
+	service.resetStaleRunningAgents()
+
+	return service
 }
 
 // List returns all agents.
@@ -306,6 +312,27 @@ func (s *AgentService) updateStatus(id string, status models.AgentStatus) (*mode
 
 	s.hub.BroadcastAgentStatus(id, status)
 	return agent, nil
+}
+
+// resetStaleRunningAgents resets any agents that are marked as "running" or "paused"
+// to "idle" status. This is called on service initialization to handle the case
+// where the application was restarted while agents were marked as running.
+func (s *AgentService) resetStaleRunningAgents() {
+	now := time.Now().UTC()
+
+	// Reset all running and paused agents to idle, with an error message
+	query := `UPDATE agents
+		SET status = ?, updated_at = ?, stopped_at = ?, error = ?
+		WHERE status IN (?, ?)`
+
+	_, err := s.db.Exec(query, models.AgentStatusIdle, now, now,
+		"Agent was not properly stopped (application restart)",
+		models.AgentStatusRunning, models.AgentStatusPaused)
+
+	if err != nil {
+		// Log the error but don't fail to start the service
+		fmt.Printf("Warning: failed to reset stale running agents: %v\n", err)
+	}
 }
 
 // CreateLLMClient creates an LLM client for the agent.
