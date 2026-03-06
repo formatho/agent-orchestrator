@@ -2,6 +2,10 @@ linters-settings:
   govet:
     disable:
       - fieldalignment
+  staticcheck:
+    checks:
+      - all
+      - -SA9003
 
 linters:
   enable:

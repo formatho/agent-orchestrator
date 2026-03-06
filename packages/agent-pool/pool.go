@@ -131,11 +131,8 @@ func (p *Pool) Kill(id string) error {
 		p.hooks.OnKill(agent)
 	}
 
-	// Stop the agent
-	if err := agent.Stop(); err != nil {
-		// Continue cleanup even if stop fails (agent might already be stopped)
-		_ = err // Explicitly ignore error
-	}
+	// Stop the agent (ignore error - agent might already be stopped)
+	_ = agent.Stop()
 
 	// Update resource tracking
 	p.usedMemory -= agent.Config.Memory
