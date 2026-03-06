@@ -61,15 +61,15 @@ func NewOpenAIProvider(config OpenAIConfig) *OpenAIProvider {
 
 // openAIRequest represents the request body for OpenAI API
 type openAIRequest struct {
-	Model            string        `json:"model"`
-	Messages         []Message     `json:"messages"`
-	MaxTokens        int           `json:"max_tokens,omitempty"`
-	Temperature      float64       `json:"temperature,omitempty"`
-	TopP             float64       `json:"top_p,omitempty"`
-	Stop             []string      `json:"stop,omitempty"`
-	FrequencyPenalty float64       `json:"frequency_penalty,omitempty"`
-	PresencePenalty  float64       `json:"presence_penalty,omitempty"`
-	Stream           bool          `json:"stream,omitempty"`
+	Model            string    `json:"model"`
+	Messages         []Message `json:"messages"`
+	MaxTokens        int       `json:"max_tokens,omitempty"`
+	Temperature      float64   `json:"temperature,omitempty"`
+	TopP             float64   `json:"top_p,omitempty"`
+	Stop             []string  `json:"stop,omitempty"`
+	FrequencyPenalty float64   `json:"frequency_penalty,omitempty"`
+	PresencePenalty  float64   `json:"presence_penalty,omitempty"`
+	Stream           bool      `json:"stream,omitempty"`
 }
 
 // openAIResponse represents the response from OpenAI API
@@ -263,10 +263,7 @@ func (p *OpenAIProvider) convertAPIError(statusCode int, apiErr *struct {
 // shouldRetry checks if an error is retryable
 func (p *OpenAIProvider) shouldRetry(err error) bool {
 	var retryErr *RetryableError
-	if errors.As(err, &retryErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &retryErr)
 }
 
 // shouldRetryHTTP checks if an HTTP status code is retryable
@@ -329,9 +326,12 @@ func (p *OpenAIProvider) Stream(ctx context.Context, req Request) (<-chan Stream
 
 	// Check HTTP status before streaming
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		close(ch)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 

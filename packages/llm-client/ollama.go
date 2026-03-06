@@ -58,16 +58,16 @@ func NewOllamaProvider(config OllamaConfig) *OllamaProvider {
 
 // ollamaRequest represents the request body for Ollama API
 type ollamaRequest struct {
-	Model            string    `json:"model"`
-	Messages         []Message `json:"messages"`
-	Stream           bool      `json:"stream"`
-	Options          struct {
-		Temperature      float64 `json:"temperature,omitempty"`
-		TopP             float64 `json:"top_p,omitempty"`
-		NumPredict       int     `json:"num_predict,omitempty"`
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+	Stream   bool      `json:"stream"`
+	Options  struct {
+		Temperature      float64  `json:"temperature,omitempty"`
+		TopP             float64  `json:"top_p,omitempty"`
+		NumPredict       int      `json:"num_predict,omitempty"`
 		Stop             []string `json:"stop,omitempty"`
-		FrequencyPenalty float64 `json:"frequency_penalty,omitempty"`
-		PresencePenalty  float64 `json:"presence_penalty,omitempty"`
+		FrequencyPenalty float64  `json:"frequency_penalty,omitempty"`
+		PresencePenalty  float64  `json:"presence_penalty,omitempty"`
 	} `json:"options,omitempty"`
 }
 
@@ -79,10 +79,10 @@ type ollamaResponse struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	} `json:"message"`
-	Done bool `json:"done"`
-	EvalCount       int `json:"eval_count"`
-	PromptEvalCount int `json:"prompt_eval_count"`
-	Error          string `json:"error,omitempty"`
+	Done            bool   `json:"done"`
+	EvalCount       int    `json:"eval_count"`
+	PromptEvalCount int    `json:"prompt_eval_count"`
+	Error           string `json:"error,omitempty"`
 }
 
 // ollamaGenerateResponse represents streaming response chunks
@@ -228,37 +228,37 @@ func (p *OllamaProvider) doRequest(ctx context.Context, req Request) (*Response,
 // While Ollama currently uses simple string errors, this allows for future expansion
 type ollamaErrorResponse struct {
 	Error string `json:"error"`
-	Type  string `json:"type,omitempty"`  // For future structured errors
-	Code  string `json:"code,omitempty"`  // For future structured errors
+	Type  string `json:"type,omitempty"` // For future structured errors
+	Code  string `json:"code,omitempty"` // For future structured errors
 }
 
 // ollamaErrorPattern represents a pattern for matching Ollama errors
 type ollamaErrorPattern struct {
-	pattern     *regexp.Regexp
-	errorType   string
+	pattern      *regexp.Regexp
+	errorType    string
 	extractModel bool
 }
 
 // ollamaErrorPatterns defines known error patterns from Ollama
 var ollamaErrorPatterns = []ollamaErrorPattern{
 	{
-		pattern:     regexp.MustCompile(`(?i)model\s+['"]?([^'"\s]+)['"]?\s+not\s+found`),
-		errorType:   "model_not_found",
+		pattern:      regexp.MustCompile(`(?i)model\s+['"]?([^'"\s]+)['"]?\s+not\s+found`),
+		errorType:    "model_not_found",
 		extractModel: true,
 	},
 	{
-		pattern:     regexp.MustCompile(`(?i)model\s+not\s+found`),
-		errorType:   "model_not_found",
+		pattern:      regexp.MustCompile(`(?i)model\s+not\s+found`),
+		errorType:    "model_not_found",
 		extractModel: false,
 	},
 	{
-		pattern:     regexp.MustCompile(`(?i)context\s+length\s+exceeded`),
-		errorType:   "context_length_exceeded",
+		pattern:      regexp.MustCompile(`(?i)context\s+length\s+exceeded`),
+		errorType:    "context_length_exceeded",
 		extractModel: false,
 	},
 	{
-		pattern:     regexp.MustCompile(`(?i)context\s+window\s+exceeded`),
-		errorType:   "context_length_exceeded",
+		pattern:      regexp.MustCompile(`(?i)context\s+window\s+exceeded`),
+		errorType:    "context_length_exceeded",
 		extractModel: false,
 	},
 }
@@ -353,10 +353,7 @@ func (p *OllamaProvider) convertStructuredError(statusCode int, apiErr *ollamaEr
 // shouldRetry checks if an error is retryable
 func (p *OllamaProvider) shouldRetry(err error) bool {
 	var retryErr *RetryableError
-	if errors.As(err, &retryErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &retryErr)
 }
 
 // shouldRetryHTTP checks if an HTTP status code is retryable
@@ -414,9 +411,12 @@ func (p *OllamaProvider) Stream(ctx context.Context, req Request) (<-chan Stream
 
 	// Check HTTP status before streaming
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		close(ch)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 

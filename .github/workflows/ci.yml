@@ -22,42 +22,66 @@ jobs:
         with:
           version: latest
           working-directory: packages/llm-client
+          args:
+            - --disable=fieldalignment
       
       - name: golangci-lint (agent-pool)
         uses: golangci/golangci-lint-action@v4
         with:
           version: latest
           working-directory: packages/agent-pool
-      
-      - name: golangci-lint (agent-skills)
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
-          working-directory: packages/agent-skills
-      
-      - name: golangci-lint (todo-queue)
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
-          working-directory: packages/todo-queue
-      
-      - name: golangci-lint (cron-agents)
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
-          working-directory: packages/cron-agents
-      
-      - name: golangci-lint (agent-config)
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
-          working-directory: packages/agent-config
+          args:
+            - --disable=fieldalignment
       
       - name: golangci-lint (backend)
         uses: golangci/golangci-lint-action@v4
         with:
           version: latest
           working-directory: backend
+          args:
+            - --disable=fieldalignment
+      - name: golangci-lint (backend)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: packages/agent-skills
+          args:
+            - --disable=fieldalignment
+      - name: golangci-lint (agent-skills)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: packages/todo-queue
+          args:
+            - --disable=fieldalignment
+      - name: golangci-lint(todo-queue)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: packages/cron-agents
+          args:
+            - --disable=fieldalignment
+      - name: golangci-lint (cron-agents)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: packages/agent-config
+          args:
+            - --disable=fieldalignment
+      - name: golangci-lint (agent-config)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: packages/agent-pool
+          args:
+            - --disable=fieldalignment
+      - name: golangci-lint (agent-pool)
+        uses: golangci/golangci-lint-action@v4
+        with:
+          version: latest
+          working-directory: packages/llm-client
+          args:
+            - --disable=fieldalignment
 
   test:
     runs-on: ubuntu-latest

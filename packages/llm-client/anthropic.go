@@ -298,10 +298,7 @@ func (p *AnthropicProvider) convertAPIError(statusCode int, apiErr *struct {
 // shouldRetry checks if an error is retryable
 func (p *AnthropicProvider) shouldRetry(err error) bool {
 	var retryErr *RetryableError
-	if errors.As(err, &retryErr) {
-		return true
-	}
-	return false
+	return errors.As(err, &retryErr)
 }
 
 // shouldRetryHTTP checks if an HTTP status code is retryable
@@ -379,9 +376,12 @@ func (p *AnthropicProvider) Stream(ctx context.Context, req Request) (<-chan Str
 
 	// Check HTTP status before streaming
 	if resp.StatusCode >= 400 {
-		respBody, _ := io.ReadAll(resp.Body)
+		respBody, err := io.ReadAll(resp.Body)
 		resp.Body.Close()
 		close(ch)
+		if err != nil {
+			return nil, fmt.Errorf("HTTP %d: failed to read response body: %w", resp.StatusCode, err)
+		}
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
 	}
 
@@ -404,7 +404,7 @@ func (p *AnthropicProvider) Stream(ctx context.Context, req Request) (<-chan Str
 			data := strings.TrimPrefix(line, "data: ")
 
 			var event struct {
-				Type string `json:"type"`
+				Type  string `json:"type"`
 				Delta struct {
 					Type string `json:"type"`
 					Text string `json:"text"`
